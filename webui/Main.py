@@ -479,76 +479,11 @@ if not config.app.get("hide_config", False):
             save_keys_to_config("pixabay_api_keys", pixabay_api_key)
 
 llm_provider = config.app.get("llm_provider", "").lower()
-panel = st.columns(3)
-left_panel = panel[0]
-middle_panel = panel[1]
-right_panel = panel[2]
-
 params = VideoParams(video_subject="")
 uploaded_files = []
+uploaded_audio = None
 
-with left_panel:
-    with st.container(border=True):
-        st.write(tr("Video Script Settings"))
-        params.video_subject = st.text_input(
-            tr("Video Subject"),
-            value=st.session_state["video_subject"],
-            key="video_subject_input",
-        ).strip()
-
-        video_languages = [
-            (tr("Auto Detect"), ""),
-        ]
-        for code in support_locales:
-            video_languages.append((code, code))
-
-        selected_index = st.selectbox(
-            tr("Script Language"),
-            index=0,
-            options=range(
-                len(video_languages)
-            ),  # Use the index as the internal option value
-            format_func=lambda x: video_languages[x][
-                0
-            ],  # The label is displayed to the user
-        )
-        params.video_language = video_languages[selected_index][1]
-
-        if st.button(
-            tr("Generate Video Script and Keywords"), key="auto_generate_script"
-        ):
-            with st.spinner(tr("Generating Video Script and Keywords")):
-                script = llm.generate_script(
-                    video_subject=params.video_subject, language=params.video_language
-                )
-                terms = llm.generate_terms(params.video_subject, script)
-                if "Error: " in script:
-                    st.error(tr(script))
-                elif "Error: " in terms:
-                    st.error(tr(terms))
-                else:
-                    st.session_state["video_script"] = script
-                    st.session_state["video_terms"] = ", ".join(terms)
-        params.video_script = st.text_area(
-            tr("Video Script"), value=st.session_state["video_script"], height=280
-        )
-        if st.button(tr("Generate Video Keywords"), key="auto_generate_terms"):
-            if not params.video_script:
-                st.error(tr("Please Enter the Video Subject"))
-                st.stop()
-
-            with st.spinner(tr("Generating Video Keywords")):
-                terms = llm.generate_terms(params.video_subject, params.video_script)
-                if "Error: " in terms:
-                    st.error(tr(terms))
-                else:
-                    st.session_state["video_terms"] = ", ".join(terms)
-
-        params.video_terms = st.text_area(
-            tr("Video Keywords"), value=st.session_state["video_terms"]
-        )
-
-with middle_panel:
+with st.container(border=True):
     with st.container(border=True):
         st.write(tr("Video Settings"))
         video_concat_modes = [
@@ -641,291 +576,16 @@ with middle_panel:
             options=[1, 2, 3, 4, 5],
             index=0,
         )
-    with st.container(border=True):
-        st.write(tr("Audio Settings"))
 
-        # 添加TTS服务器选择下拉框
-        tts_servers = [
-            ("azure-tts-v1", "Azure TTS V1"),
-            ("azure-tts-v2", "Azure TTS V2"),
-            ("siliconflow", "SiliconFlow TTS"),
-            ("gemini-tts", "Google Gemini TTS"),
-        ]
-
-        # 获取保存的TTS服务器，默认为v1
-        saved_tts_server = config.ui.get("tts_server", "azure-tts-v1")
-        saved_tts_server_index = 0
-        for i, (server_value, _) in enumerate(tts_servers):
-            if server_value == saved_tts_server:
-                saved_tts_server_index = i
-                break
-
-        selected_tts_server_index = st.selectbox(
-            tr("TTS Servers"),
-            options=range(len(tts_servers)),
-            format_func=lambda x: tts_servers[x][1],
-            index=saved_tts_server_index,
+        uploaded_audio = st.file_uploader(
+            tr("Custom Audio File (optional)"),
+            type=["mp3", "wav", "m4a"],
+            accept_multiple_files=False,
+            key="custom_audio_file_uploader",
+            help=tr("If provided, this audio will be used instead of TTS, and subtitles will be disabled."),
         )
 
-        selected_tts_server = tts_servers[selected_tts_server_index][0]
-        config.ui["tts_server"] = selected_tts_server
-
-        # 根据选择的TTS服务器获取声音列表
-        filtered_voices = []
-
-        if selected_tts_server == "siliconflow":
-            # 获取硅基流动的声音列表
-            filtered_voices = voice.get_siliconflow_voices()
-        elif selected_tts_server == "gemini-tts":
-            # 获取Gemini TTS的声音列表
-            filtered_voices = voice.get_gemini_voices()
-        else:
-            # 获取Azure的声音列表
-            all_voices = voice.get_all_azure_voices(filter_locals=None)
-
-            # 根据选择的TTS服务器筛选声音
-            for v in all_voices:
-                if selected_tts_server == "azure-tts-v2":
-                    # V2版本的声音名称中包含"v2"
-                    if "V2" in v:
-                        filtered_voices.append(v)
-                else:
-                    # V1版本的声音名称中不包含"v2"
-                    if "V2" not in v:
-                        filtered_voices.append(v)
-
-        friendly_names = {
-            v: v.replace("Female", tr("Female"))
-            .replace("Male", tr("Male"))
-            .replace("Neural", "")
-            for v in filtered_voices
-        }
-
-        saved_voice_name = config.ui.get("voice_name", "")
-        saved_voice_name_index = 0
-
-        # 检查保存的声音是否在当前筛选的声音列表中
-        if saved_voice_name in friendly_names:
-            saved_voice_name_index = list(friendly_names.keys()).index(saved_voice_name)
-        else:
-            # 如果不在，则根据当前UI语言选择一个默认声音
-            for i, v in enumerate(filtered_voices):
-                if v.lower().startswith(st.session_state["ui_language"].lower()):
-                    saved_voice_name_index = i
-                    break
-
-        # 如果没有找到匹配的声音，使用第一个声音
-        if saved_voice_name_index >= len(friendly_names) and friendly_names:
-            saved_voice_name_index = 0
-
-        # 确保有声音可选
-        if friendly_names:
-            selected_friendly_name = st.selectbox(
-                tr("Speech Synthesis"),
-                options=list(friendly_names.values()),
-                index=min(saved_voice_name_index, len(friendly_names) - 1)
-                if friendly_names
-                else 0,
-            )
-
-            voice_name = list(friendly_names.keys())[
-                list(friendly_names.values()).index(selected_friendly_name)
-            ]
-            params.voice_name = voice_name
-            config.ui["voice_name"] = voice_name
-        else:
-            # 如果没有声音可选，显示提示信息
-            st.warning(
-                tr(
-                    "No voices available for the selected TTS server. Please select another server."
-                )
-            )
-            params.voice_name = ""
-            config.ui["voice_name"] = ""
-
-        # 只有在有声音可选时才显示试听按钮
-        if friendly_names and st.button(tr("Play Voice")):
-            play_content = params.video_subject
-            if not play_content:
-                play_content = params.video_script
-            if not play_content:
-                play_content = tr("Voice Example")
-            with st.spinner(tr("Synthesizing Voice")):
-                temp_dir = utils.storage_dir("temp", create=True)
-                audio_file = os.path.join(temp_dir, f"tmp-voice-{str(uuid4())}.mp3")
-                sub_maker = voice.tts(
-                    text=play_content,
-                    voice_name=voice_name,
-                    voice_rate=params.voice_rate,
-                    voice_file=audio_file,
-                    voice_volume=params.voice_volume,
-                )
-                # if the voice file generation failed, try again with a default content.
-                if not sub_maker:
-                    play_content = "This is a example voice. if you hear this, the voice synthesis failed with the original content."
-                    sub_maker = voice.tts(
-                        text=play_content,
-                        voice_name=voice_name,
-                        voice_rate=params.voice_rate,
-                        voice_file=audio_file,
-                        voice_volume=params.voice_volume,
-                    )
-
-                if sub_maker and os.path.exists(audio_file):
-                    st.audio(audio_file, format="audio/mp3")
-                    if os.path.exists(audio_file):
-                        os.remove(audio_file)
-
-        # 当选择V2版本或者声音是V2声音时，显示服务区域和API key输入框
-        if selected_tts_server == "azure-tts-v2" or (
-            voice_name and voice.is_azure_v2_voice(voice_name)
-        ):
-            saved_azure_speech_region = config.azure.get("speech_region", "")
-            saved_azure_speech_key = config.azure.get("speech_key", "")
-            azure_speech_region = st.text_input(
-                tr("Speech Region"),
-                value=saved_azure_speech_region,
-                key="azure_speech_region_input",
-            )
-            azure_speech_key = st.text_input(
-                tr("Speech Key"),
-                value=saved_azure_speech_key,
-                type="password",
-                key="azure_speech_key_input",
-            )
-            config.azure["speech_region"] = azure_speech_region
-            config.azure["speech_key"] = azure_speech_key
-
-        # 当选择硅基流动时，显示API key输入框和说明信息
-        if selected_tts_server == "siliconflow" or (
-            voice_name and voice.is_siliconflow_voice(voice_name)
-        ):
-            saved_siliconflow_api_key = config.siliconflow.get("api_key", "")
-
-            siliconflow_api_key = st.text_input(
-                tr("SiliconFlow API Key"),
-                value=saved_siliconflow_api_key,
-                type="password",
-                key="siliconflow_api_key_input",
-            )
-
-            # 显示硅基流动的说明信息
-            st.info(
-                tr("SiliconFlow TTS Settings")
-                + ":\n"
-                + "- "
-                + tr("Speed: Range [0.25, 4.0], default is 1.0")
-                + "\n"
-                + "- "
-                + tr("Volume: Uses Speech Volume setting, default 1.0 maps to gain 0")
-            )
-
-            config.siliconflow["api_key"] = siliconflow_api_key
-
-        params.voice_volume = st.selectbox(
-            tr("Speech Volume"),
-            options=[0.6, 0.8, 1.0, 1.2, 1.5, 2.0, 3.0, 4.0, 5.0],
-            index=2,
-        )
-
-        params.voice_rate = st.selectbox(
-            tr("Speech Rate"),
-            options=[0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.5, 1.8, 2.0],
-            index=2,
-        )
-
-        bgm_options = [
-            (tr("No Background Music"), ""),
-            (tr("Random Background Music"), "random"),
-            (tr("Custom Background Music"), "custom"),
-        ]
-        selected_index = st.selectbox(
-            tr("Background Music"),
-            index=1,
-            options=range(
-                len(bgm_options)
-            ),  # Use the index as the internal option value
-            format_func=lambda x: bgm_options[x][
-                0
-            ],  # The label is displayed to the user
-        )
-        # Get the selected background music type
-        params.bgm_type = bgm_options[selected_index][1]
-
-        # Show or hide components based on the selection
-        if params.bgm_type == "custom":
-            custom_bgm_file = st.text_input(
-                tr("Custom Background Music File"), key="custom_bgm_file_input"
-            )
-            if custom_bgm_file and os.path.exists(custom_bgm_file):
-                params.bgm_file = custom_bgm_file
-                # st.write(f":red[已选择自定义背景音乐]：**{custom_bgm_file}**")
-        params.bgm_volume = st.selectbox(
-            tr("Background Music Volume"),
-            options=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
-            index=2,
-        )
-
-with right_panel:
-    with st.container(border=True):
-        st.write(tr("Subtitle Settings"))
-        params.subtitle_enabled = st.checkbox(tr("Enable Subtitles"), value=True)
-        font_names = get_all_fonts()
-        saved_font_name = config.ui.get("font_name", "MicrosoftYaHeiBold.ttc")
-        saved_font_name_index = 0
-        if saved_font_name in font_names:
-            saved_font_name_index = font_names.index(saved_font_name)
-        params.font_name = st.selectbox(
-            tr("Font"), font_names, index=saved_font_name_index
-        )
-        config.ui["font_name"] = params.font_name
-
-        subtitle_positions = [
-            (tr("Top"), "top"),
-            (tr("Center"), "center"),
-            (tr("Bottom"), "bottom"),
-            (tr("Custom"), "custom"),
-        ]
-        selected_index = st.selectbox(
-            tr("Position"),
-            index=2,
-            options=range(len(subtitle_positions)),
-            format_func=lambda x: subtitle_positions[x][0],
-        )
-        params.subtitle_position = subtitle_positions[selected_index][1]
-
-        if params.subtitle_position == "custom":
-            custom_position = st.text_input(
-                tr("Custom Position (% from top)"),
-                value="70.0",
-                key="custom_position_input",
-            )
-            try:
-                params.custom_position = float(custom_position)
-                if params.custom_position < 0 or params.custom_position > 100:
-                    st.error(tr("Please enter a value between 0 and 100"))
-            except ValueError:
-                st.error(tr("Please enter a valid number"))
-
-        font_cols = st.columns([0.3, 0.7])
-        with font_cols[0]:
-            saved_text_fore_color = config.ui.get("text_fore_color", "#FFFFFF")
-            params.text_fore_color = st.color_picker(
-                tr("Font Color"), saved_text_fore_color
-            )
-            config.ui["text_fore_color"] = params.text_fore_color
-
-        with font_cols[1]:
-            saved_font_size = config.ui.get("font_size", 60)
-            params.font_size = st.slider(tr("Font Size"), 30, 100, saved_font_size)
-            config.ui["font_size"] = params.font_size
-
-        stroke_cols = st.columns([0.3, 0.7])
-        with stroke_cols[0]:
-            params.stroke_color = st.color_picker(tr("Stroke Color"), "#000000")
-        with stroke_cols[1]:
-            params.stroke_width = st.slider(tr("Stroke Width"), 0.0, 10.0, 1.5)
-    with st.expander(tr("Click to show API Key management"), expanded=False):
+with st.expander(tr("Click to show API Key management"), expanded=False):
         st.subheader(tr("Manage Pexels and Pixabay API Keys"))
 
         col1, col2 = st.tabs(["Pexels API Keys", "Pixabay API Keys"])
@@ -993,10 +653,6 @@ start_button = st.button(tr("Generate Video"), use_container_width=True, type="p
 if start_button:
     config.save_config()
     task_id = str(uuid4())
-    if not params.video_subject and not params.video_script:
-        st.error(tr("Video Script and Subject Cannot Both Be Empty"))
-        scroll_to_bottom()
-        st.stop()
 
     if params.video_source not in ["pexels", "pixabay", "local"]:
         st.error(tr("Please Select a Valid Video Source"))
@@ -1019,12 +675,19 @@ if start_button:
             file_path = os.path.join(local_videos_dir, f"{file.file_id}_{file.name}")
             with open(file_path, "wb") as f:
                 f.write(file.getbuffer())
-                m = MaterialInfo()
-                m.provider = "local"
-                m.url = file_path
-                if not params.video_materials:
-                    params.video_materials = []
-                params.video_materials.append(m)
+            m = MaterialInfo()
+            m.provider = "local"
+            m.url = file_path
+            if not params.video_materials:
+                params.video_materials = []
+            params.video_materials.append(m)
+
+    if uploaded_audio is not None:
+        audio_dir = utils.storage_dir("custom_audios", create=True)
+        audio_path = os.path.join(audio_dir, f"{uploaded_audio.file_id}_{uploaded_audio.name}")
+        with open(audio_path, "wb") as f:
+            f.write(uploaded_audio.getbuffer())
+        params.custom_audio_file = audio_path
 
     log_container = st.empty()
     log_records = []
