@@ -27,6 +27,14 @@ class VideoTransitionMode(str, Enum):
     slide_out = "SlideOut"
 
 
+class VideoQuality(str, Enum):
+    """导出画质档位：高画质文件大，低画质文件小、编码快"""
+
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
 class VideoAspect(str, Enum):
     landscape = "16:9"
     portrait = "9:16"
@@ -74,6 +82,7 @@ class VideoParams(BaseModel):
     video_aspect: Optional[VideoAspect] = VideoAspect.portrait.value
     video_concat_mode: Optional[VideoConcatMode] = VideoConcatMode.random.value
     video_transition_mode: Optional[VideoTransitionMode] = None
+    video_quality: Optional[VideoQuality] = VideoQuality.medium.value
     video_clip_duration: Optional[int] = 5
     video_count: Optional[int] = 1
 

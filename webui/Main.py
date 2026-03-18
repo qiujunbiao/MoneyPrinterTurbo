@@ -20,6 +20,7 @@ from app.models.schema import (
     VideoAspect,
     VideoConcatMode,
     VideoParams,
+    VideoQuality,
     VideoTransitionMode,
 )
 from app.services import llm, voice
@@ -576,6 +577,18 @@ with st.container(border=True):
             options=[1, 2, 3, 4, 5],
             index=0,
         )
+        video_quality_options = [
+            (tr("High (best quality, larger file)"), VideoQuality.high.value),
+            (tr("Medium (balanced)"), VideoQuality.medium.value),
+            (tr("Low (smaller file, faster)"), VideoQuality.low.value),
+        ]
+        quality_index = st.selectbox(
+            tr("Export Quality"),
+            options=range(len(video_quality_options)),
+            format_func=lambda x: video_quality_options[x][0],
+            index=1,
+        )
+        params.video_quality = VideoQuality(video_quality_options[quality_index][1])
 
         uploaded_audio = st.file_uploader(
             tr("Custom Audio File (optional)"),

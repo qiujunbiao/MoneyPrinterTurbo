@@ -51,6 +51,23 @@ audio_codec = "aac"
 video_codec = "libx264"
 fps = 30
 
+# 画质档位对应的 FFmpeg 参数（CRF 越小画质越好，preset 越慢压缩越好）
+QUALITY_FFMPEG_MAP = {
+    "high": ["-crf", "16", "-preset", "slow"],
+    "medium": ["-crf", "18", "-preset", "medium"],
+    "low": ["-crf", "23", "-preset", "fast"],
+}
+
+
+def get_quality_ffmpeg_params(quality: str = None) -> List[str]:
+    """根据画质档位返回 FFmpeg 参数列表。quality 可为 'high'/'medium'/'low' 或 VideoQuality 枚举。"""
+    if quality is None:
+        key = "medium"
+    else:
+        key = getattr(quality, "value", quality)
+    key = str(key).lower()
+    return QUALITY_FFMPEG_MAP.get(key, QUALITY_FFMPEG_MAP["medium"]).copy()
+
 def close_clip(clip):
     if clip is None:
         return
@@ -121,6 +138,7 @@ def combine_videos(
     video_aspect: VideoAspect = VideoAspect.portrait,
     video_concat_mode: VideoConcatMode = VideoConcatMode.random,
     video_transition_mode: VideoTransitionMode = None,
+    video_quality: str = "medium",
     max_clip_duration: int = 5,
     threads: int = 2,
 ) -> str:
@@ -219,7 +237,13 @@ def combine_videos(
                 
             # wirte clip to temp file
             clip_file = f"{output_dir}/temp-clip-{i+1}.mp4"
-            clip.write_videofile(clip_file, logger=None, fps=fps, codec=video_codec)
+            clip.write_videofile(
+                clip_file,
+                logger=None,
+                fps=fps,
+                codec=video_codec,
+                ffmpeg_params=get_quality_ffmpeg_params(video_quality),
+            )
             
             close_clip(clip)
         
@@ -282,6 +306,7 @@ def combine_videos(
                 temp_audiofile_path=output_dir,
                 audio_codec=audio_codec,
                 fps=fps,
+                ffmpeg_params=get_quality_ffmpeg_params(video_quality),
             )
             close_clip(base_clip)
             close_clip(next_clip)
@@ -479,12 +504,13 @@ def generate_video(
         threads=params.n_threads or 2,
         logger=None,
         fps=fps,
+        ffmpeg_params=get_quality_ffmpeg_params(getattr(params, "video_quality", None)),
     )
     video_clip.close()
     del video_clip
 
 
-def preprocess_video(materials: List[MaterialInfo], clip_duration=4):
+def preprocess_video(materials: List[MaterialInfo], clip_duration=4, video_quality: str = "medium"):
     for material in materials:
         if not material.url:
             continue
@@ -522,9 +548,14 @@ def preprocess_video(materials: List[MaterialInfo], clip_duration=4):
             # This is useful when you want to add other elements to the video.
             final_clip = CompositeVideoClip([zoom_clip])
 
-            # Output the video to a file.
+            # Output the video to a file（使用与成片一致的画质档位，减少照片转视频时的画质损失）
             video_file = f"{material.url}.mp4"
-            final_clip.write_videofile(video_file, fps=30, logger=None)
+            final_clip.write_videofile(
+                video_file,
+                fps=30,
+                logger=None,
+                ffmpeg_params=get_quality_ffmpeg_params(video_quality),
+            )
             close_clip(clip)
             material.url = video_file
             logger.success(f"image processed: {video_file}")
