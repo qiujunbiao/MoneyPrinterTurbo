@@ -53,10 +53,11 @@ video_codec = "libx264"
 fps = 30
 
 # 画质档位对应的 FFmpeg 参数（CRF 越小画质越好，preset 越慢压缩越好）
+# 同时限制最大瞬时码率 -maxrate 和缓冲区大小 -bufsize，减少开头码率峰值导致的解码压力。
 QUALITY_FFMPEG_MAP = {
-    "high": ["-crf", "16", "-preset", "slow"],
-    "medium": ["-crf", "18", "-preset", "medium"],
-    "low": ["-crf", "23", "-preset", "fast"],
+    "high": ["-crf", "16", "-preset", "slow", "-maxrate", "15000k", "-bufsize", "30000k"],
+    "medium": ["-crf", "18", "-preset", "medium", "-maxrate", "10000k", "-bufsize", "20000k"],
+    "low": ["-crf", "23", "-preset", "fast", "-maxrate", "6000k", "-bufsize", "12000k"],
 }
 
 
@@ -532,6 +533,13 @@ def generate_video(
             audio_clip = CompositeAudioClip([audio_clip, bgm_clip])
         except Exception as e:
             logger.error(f"failed to add bgm: {str(e)}")
+
+    # 在整条视频开头加入轻微淡入，缓和播放器起播时的抖动/丢帧感
+    try:
+        video_clip = video_clip.with_effects([video_effects.vfx.FadeIn(1.0)])
+    except Exception:
+        # 如果特效失败，不影响主流程
+        pass
 
     video_clip = video_clip.with_audio(audio_clip)
     video_clip.write_videofile(
