@@ -26,6 +26,7 @@ from app.models.schema import (
     VideoAspect,
     VideoConcatMode,
     VideoParams,
+    VideoResolution,
     VideoTransitionMode,
 )
 from app.services.utils import video_effects
@@ -67,6 +68,37 @@ def get_quality_ffmpeg_params(quality: str = None) -> List[str]:
         key = getattr(quality, "value", quality)
     key = str(key).lower()
     return QUALITY_FFMPEG_MAP.get(key, QUALITY_FFMPEG_MAP["medium"]).copy()
+
+
+def get_video_resolution(aspect: VideoAspect, resolution: str | None) -> tuple[int, int]:
+    """
+    根据画面比例和分辨率档位返回目标宽高。
+    分辨率字符串形如 "720p" / "1080p" / "1440p" / "2160p"。
+    """
+    # 解析分辨率短边高度
+    if resolution is None:
+        height_base = 1080
+    else:
+        value = getattr(resolution, "value", resolution)
+        try:
+            height_base = int(str(value).lower().replace("p", ""))
+        except ValueError:
+            height_base = 1080
+
+    if aspect == VideoAspect.landscape.value or aspect == VideoAspect.landscape:
+        # 16:9 横屏
+        width = int(height_base * 16 / 9)
+        height = height_base
+    elif aspect == VideoAspect.portrait.value or aspect == VideoAspect.portrait:
+        # 9:16 竖屏
+        width = height_base
+        height = int(height_base * 16 / 9)
+    else:
+        # 1:1 方形
+        width = height_base
+        height = height_base
+
+    return width, height
 
 def close_clip(clip):
     if clip is None:
@@ -139,6 +171,7 @@ def combine_videos(
     video_concat_mode: VideoConcatMode = VideoConcatMode.random,
     video_transition_mode: VideoTransitionMode = None,
     video_quality: str = "medium",
+    video_resolution: str = "1080p",
     max_clip_duration: int = 5,
     threads: int = 2,
 ) -> str:
@@ -152,7 +185,9 @@ def combine_videos(
     output_dir = os.path.dirname(combined_video_path)
 
     aspect = VideoAspect(video_aspect)
-    video_width, video_height = aspect.to_resolution()
+    video_width, video_height = get_video_resolution(
+        aspect, video_resolution
+    )
 
     processed_clips = []
     subclipped_items = []
@@ -393,7 +428,9 @@ def generate_video(
     params: VideoParams,
 ):
     aspect = VideoAspect(params.video_aspect)
-    video_width, video_height = aspect.to_resolution()
+    video_width, video_height = get_video_resolution(
+        aspect, getattr(params, "video_resolution", None)
+    )
 
     logger.info(f"generating video: {video_width} x {video_height}")
     logger.info(f"  ① video: {video_path}")

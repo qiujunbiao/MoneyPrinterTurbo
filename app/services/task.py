@@ -219,6 +219,7 @@ def generate_final_videos(
             video_concat_mode=video_concat_mode,
             video_transition_mode=video_transition_mode,
             video_quality=getattr(params, "video_quality", "medium"),
+            video_resolution=getattr(params, "video_resolution", "1080p"),
             max_clip_duration=params.video_clip_duration,
             threads=params.n_threads,
         )

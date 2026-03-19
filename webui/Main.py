@@ -21,6 +21,7 @@ from app.models.schema import (
     VideoConcatMode,
     VideoParams,
     VideoQuality,
+    VideoResolution,
     VideoTransitionMode,
 )
 from app.services import llm, voice
@@ -568,6 +569,22 @@ with st.container(border=True):
             ],  # The label is displayed to the user
         )
         params.video_aspect = VideoAspect(video_aspect_ratios[selected_index][1])
+
+        resolution_levels = [
+            (tr("HD 720p"), VideoResolution.p720.value),
+            (tr("Full HD 1080p"), VideoResolution.p1080.value),
+            (tr("2K 1440p"), VideoResolution.p1440.value),
+            (tr("4K 2160p"), VideoResolution.p2160.value),
+        ]
+        resolution_index = st.selectbox(
+            tr("Export Resolution"),
+            options=range(len(resolution_levels)),
+            format_func=lambda x: resolution_levels[x][0],
+            index=1,
+        )
+        params.video_resolution = VideoResolution(
+            resolution_levels[resolution_index][1]
+        )
 
         params.video_clip_duration = st.selectbox(
             tr("Clip Duration"), options=[2, 3, 4, 5, 6, 7, 8, 9, 10], index=1
