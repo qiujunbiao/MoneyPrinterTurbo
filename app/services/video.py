@@ -534,12 +534,8 @@ def generate_video(
         except Exception as e:
             logger.error(f"failed to add bgm: {str(e)}")
 
-    # 在整条视频开头加入轻微淡入，缓和播放器起播时的抖动/丢帧感
-    try:
-        video_clip = video_clip.with_effects([video_effects.vfx.FadeIn(1.0)])
-    except Exception:
-        # 如果特效失败，不影响主流程
-        pass
+    # 不在成片开头做全局 FadeIn：FadeIn 会让第 0 帧透明度为 0，多数播放器「未播放」时只显示第 0 帧，会一直是黑屏/无图。
+    # 起播抖动已通过编码侧 -maxrate/-bufsize 等参数缓解。
 
     video_clip = video_clip.with_audio(audio_clip)
     video_clip.write_videofile(
